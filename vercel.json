@@ -1,0 +1,7 @@
+{
+  "crons": [
+    { "path": "/api/cron?objective=1", "schedule": "0 13 * * 1-5" },
+    { "path": "/api/cron?objective=2", "schedule": "0 18 * * 1-5" },
+    { "path": "/api/cron?objective=3", "schedule": "0 12 * * 2,4" }
+  ]
+}
