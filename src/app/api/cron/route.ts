@@ -3,7 +3,7 @@ import { DATABASE, Lead } from '@/data/leads';
 
 export const runtime = 'edge';
 
-// Bairros e polos prioritários para logística na Zona Norte de Londrina
+// Bairros prioritários da Zona Norte de Londrina para roteamento logístico
 const PRIORIDADES = [
   'cinco conjuntos',
   'semiramis',
@@ -20,17 +20,17 @@ export async function GET(request: Request) {
   const objective = searchParams.get('objective') || '1';
   const secret = searchParams.get('secret') || 'senha_secreta_tata_2026';
   
-  // URL do túnel LocalTunnel ativo no Termux
-  const motorUrl = process.env.MOTOR_URL || 'https://wise-kangaroo-0.loca.lt';
+  // URL EXATA DO TÚNEL DO SEU GALAXY TAB S8 (Não alterar enquanto o Termux estiver rodando)
+  const motorUrl = 'https://big-gecko-89.loca.lt';
 
-  // Ordena os 700 leads priorizando o complexo dos Cinco Conjuntos e Alpes
+  // Ordena a base de dados priorizando a Zona Norte
   const leadsPrioritarios = [...DATABASE].sort((a, b) => {
     const aP = PRIORIDADES.some(p => a.bairro?.toLowerCase().includes(p));
     const bP = PRIORIDADES.some(p => b.bairro?.toLowerCase().includes(p));
     return aP === bP ? 0 : aP ? -1 : 1;
   });
 
-  // Filtra números válidos e seleciona o lote de segurança (2 envios por execução)
+  // Filtra números de telefone válidos e seleciona um lote seguro de 2 mensagens por vez
   const lote = leadsPrioritarios
     .filter(lead => lead.telefone && lead.telefone.replace(/\D/g, '').length >= 10)
     .slice(0, 2);
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     const telefoneLimpo = lead.telefone.replace(/\D/g, '');
     const primeiroNome = lead.nome.split(' ')[0];
 
-    // Geração dinâmica da mensagem por objetivo
+    // Geração dinâmica de copywriting focada em conversão e baseada no objetivo
     let mensagem = '';
     if (objective === '1') {
       mensagem = `Olá equipe da ${primeiroNome}! 🍲 Aqui é da Caseirinhas da Tatá. Hoje temos Bife à Parmegiana com arroz soltinho e feijão caseiro saindo quentinho. Entregamos super rápido aí na região do ${lead.bairro}. Posso mandar o cardápio completo de hoje?`;
@@ -52,11 +52,12 @@ export async function GET(request: Request) {
     }
 
     try {
+      // Faz o disparo da Nuvem (Vercel) para o Tablet (Termux)
       const response = await fetch(`${motorUrl}/api/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'bypass-tunnel-reminder': 'true', // Previne interrupções da página inicial do LocalTunnel
+          'bypass-tunnel-reminder': 'true', // Garante que o LocalTunnel não bloqueie a requisição
         },
         body: JSON.stringify({
           secret: secret,
@@ -84,6 +85,7 @@ export async function GET(request: Request) {
     }
   }
 
+  // Retorna o log completo para o painel de controle
   return NextResponse.json({
     success: true,
     timestamp: new Date().toISOString(),
