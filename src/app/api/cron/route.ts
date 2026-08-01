@@ -3,7 +3,7 @@ import { DATABASE, Lead } from '@/data/leads';
 
 export const runtime = 'edge';
 
-// Bairros prioritários da Zona Norte de Londrina para roteamento logístico
+// Bairros prioritários para roteamento logístico na Zona Norte
 const PRIORIDADES = [
   'cinco conjuntos',
   'semiramis',
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const objective = searchParams.get('objective') || '1';
   const secret = searchParams.get('secret') || 'senha_secreta_tata_2026';
   
-  // URL EXATA DO TÚNEL DO SEU GALAXY TAB S8 (Não alterar enquanto o Termux estiver rodando)
+  // 🔴 COLOQUE AQUI A URL EXATA QUE ESTÁ APARECENDO NO SEU TERMUX AGORA
   const motorUrl = 'https://big-gecko-89.loca.lt';
 
   // Ordena a base de dados priorizando a Zona Norte
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     return aP === bP ? 0 : aP ? -1 : 1;
   });
 
-  // Filtra números de telefone válidos e seleciona um lote seguro de 2 mensagens por vez
+  // Filtra números válidos e seleciona o lote seguro (2 mensagens por vez)
   const lote = leadsPrioritarios
     .filter(lead => lead.telefone && lead.telefone.replace(/\D/g, '').length >= 10)
     .slice(0, 2);
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     const telefoneLimpo = lead.telefone.replace(/\D/g, '');
     const primeiroNome = lead.nome.split(' ')[0];
 
-    // Geração dinâmica de copywriting focada em conversão e baseada no objetivo
+    // Copywriting contextualizado por objetivo
     let mensagem = '';
     if (objective === '1') {
       mensagem = `Olá equipe da ${primeiroNome}! 🍲 Aqui é da Caseirinhas da Tatá. Hoje temos Bife à Parmegiana com arroz soltinho e feijão caseiro saindo quentinho. Entregamos super rápido aí na região do ${lead.bairro}. Posso mandar o cardápio completo de hoje?`;
@@ -52,12 +52,13 @@ export async function GET(request: Request) {
     }
 
     try {
-      // Faz o disparo da Nuvem (Vercel) para o Tablet (Termux)
+      // Disparo com Bypass Anti-Phishing para furar o bloqueio do LocalTunnel
       const response = await fetch(`${motorUrl}/api/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'bypass-tunnel-reminder': 'true', // Garante que o LocalTunnel não bloqueie a requisição
+          'Bypass-Tunnel-Reminder': 'true',
+          'User-Agent': 'Caseirinhas-Engine/1.0'
         },
         body: JSON.stringify({
           secret: secret,
@@ -66,12 +67,20 @@ export async function GET(request: Request) {
         }),
       });
 
-      const resData = await response.json().catch(() => ({ status: 'enviado' }));
+      // Valida se o Termux conseguiu processar e retornar um JSON válido
+      let resData;
+      try {
+         resData = await response.json();
+      } catch(e) {
+         resData = { erro: "Falha na leitura. O túnel pode estar inativo ou bloqueando." };
+      }
+
       resultados.push({
         empresa: lead.nome,
         bairro: lead.bairro,
         telefone: telefoneLimpo,
-        status: response.ok ? 'sucesso' : 'falha',
+        status: response.ok ? 'sucesso' : 'falha_api',
+        http_status: response.status,
         resposta_motor: resData,
       });
     } catch (error: any) {
@@ -79,13 +88,12 @@ export async function GET(request: Request) {
         empresa: lead.nome,
         bairro: lead.bairro,
         telefone: telefoneLimpo,
-        status: 'erro_conexao',
+        status: 'erro_conexao_tunel',
         detalhe: error.message,
       });
     }
   }
 
-  // Retorna o log completo para o painel de controle
   return NextResponse.json({
     success: true,
     timestamp: new Date().toISOString(),
