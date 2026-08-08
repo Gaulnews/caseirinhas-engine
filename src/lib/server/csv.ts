@@ -1,3 +1,6 @@
+const LF = String.fromCharCode(10);
+const CR = String.fromCharCode(13);
+
 export function parseCsv(input: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -17,17 +20,17 @@ export function parseCsv(input: string): string[][] {
       }
       continue;
     }
+
     if (char === '"') quoted = true;
     else if (char === ',') {
       row.push(cell.trim());
       cell = '';
-    } else if (char === '
-') {
+    } else if (char === LF) {
       row.push(cell.trim());
       rows.push(row);
       row = [];
       cell = '';
-    } else if (char !== '') {
+    } else if (char !== CR) {
       cell += char;
     }
   }
