@@ -7,19 +7,36 @@ export function parseCsv(input: string): string[][] {
   for (let i = 0; i < input.length; i += 1) {
     const char = input[i];
     if (quoted) {
-      if (char === '"' && input[i + 1] === '"') { cell += '"'; i += 1; }
-      else if (char === '"') quoted = false;
-      else cell += char;
+      if (char === '"' && input[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        cell += char;
+      }
       continue;
     }
     if (char === '"') quoted = true;
-    else if (char === ',') { row.push(cell.trim()); cell = ''; }
-    else if (char === '
-') { row.push(cell.trim()); rows.push(row); row = []; cell = ''; }
-    else if (char !== '') cell += char;
+    else if (char === ',') {
+      row.push(cell.trim());
+      cell = '';
+    } else if (char === '
+') {
+      row.push(cell.trim());
+      rows.push(row);
+      row = [];
+      cell = '';
+    } else if (char !== '') {
+      cell += char;
+    }
   }
+
   if (quoted) throw new Error('CSV contains an unterminated quoted field');
-  if (cell.length > 0 || row.length > 0) { row.push(cell.trim()); rows.push(row); }
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell.trim());
+    rows.push(row);
+  }
   return rows.filter((values) => values.some(Boolean));
 }
 
