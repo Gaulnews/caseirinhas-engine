@@ -10,15 +10,6 @@ function asHeaders(headers?: HeadersInit) {
   return new Headers(headers);
 }
 
-export function requireAdminApiToken(request: Request) {
-  const expected = requiredEnv('ADMIN_API_TOKEN');
-  const supplied = request.headers.get('authorization');
-  if (supplied !== `Bearer ${expected}`) {
-    return false;
-  }
-  return true;
-}
-
 export async function supabaseRest(path: string, options: RestOptions = {}) {
   const baseUrl = requiredEnv('SUPABASE_URL').replace(/\/$/, '');
   const serviceRoleKey = requiredEnv('SUPABASE_SERVICE_ROLE_KEY');

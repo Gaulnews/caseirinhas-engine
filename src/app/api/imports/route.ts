@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { normalizeBrazilPhone, normalizedText, parseCsv } from '../../../lib/server/csv';
-import { requireAdminApiToken, supabaseRest } from '../../../lib/server/supabase-rest';
+import { supabaseRest } from '../../../lib/server/supabase-rest';
+import { requireStaff } from '../../../lib/server/auth';
+import { logAudit } from '../../../lib/server/audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +19,8 @@ function column(row: string[], headers: string[], names: string[]) {
 async function json(response: Response) { return response.json().catch(() => null); }
 
 export async function POST(request: NextRequest) {
-  if (!requireAdminApiToken(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const staff = await requireStaff(request, 'operator');
+  if (!staff.ok) return staff.response;
 
   const form = await request.formData().catch(() => null);
   const file = form?.get('file');
@@ -89,5 +92,6 @@ export async function POST(request: NextRequest) {
   }
 
   await supabaseRest(`lead_imports?id=eq.${importId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'completed', accepted_rows: accepted, rejected_rows: rejected, completed_at: new Date().toISOString() }) });
+  await logAudit({ actorId: staff.staff.actorId, action: 'lead_import', entityType: 'lead_import', entityId: importId, metadata: { totalRows: candidates.length, accepted, rejected, via: staff.staff.via } });
   return NextResponse.json({ success: true, importId, totalRows: candidates.length, acceptedRows: accepted, rejectedRows: rejected, status: 'pending_review_only' }, { status: 201 });
 }

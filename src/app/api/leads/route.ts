@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminApiToken, supabaseRest } from '../../../lib/server/supabase-rest';
+import { requireStaff } from '../../../lib/server/auth';
+import { supabaseRest } from '../../../lib/server/supabase-rest';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  if (!requireAdminApiToken(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const staff = await requireStaff(request, 'viewer');
+  if (!staff.ok) return staff.response;
 
   const { searchParams } = new URL(request.url);
   const requestedLimit = Number(searchParams.get('limit') ?? '50');
@@ -12,6 +14,7 @@ export async function GET(request: NextRequest) {
   const offset = Math.max(Number(searchParams.get('offset') ?? '0'), 0);
   const rawSearch = searchParams.get('search')?.trim() ?? '';
   const search = rawSearch.replace(/[^\p{L}\p{N} .+()-]/gu, '').slice(0, 80);
+  const statusFilter = searchParams.get('status')?.trim() ?? '';
 
   const query = new URLSearchParams({
     select: 'id,company_name,phone_e164,neighborhood,city,state,status,created_at',
@@ -20,6 +23,8 @@ export async function GET(request: NextRequest) {
     limit: String(limit),
     offset: String(offset),
   });
+
+  if (statusFilter) query.set('status', `eq.${statusFilter}`);
 
   if (search) query.set('company_name', `ilike.*${search}*`);
 
