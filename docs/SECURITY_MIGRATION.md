@@ -53,6 +53,7 @@ MESSAGE_PROVIDER_WEBHOOK_SECRET=
 4. **Configure a real scheduler** (e.g. a Vercel Cron Job) to call `POST /api/internal/queue/dispatch` on an interval, if/when real dispatch is wanted — nothing calls it automatically today.
 5. **Decide on and wire a real messaging provider** (replace `NullMessagingProvider`) — explicitly out of scope for this change.
 6. **Rotate `ADMIN_API_TOKEN`** once real staff accounts exist and the bridge is no longer needed day-to-day.
+7. **Re-enable Vercel Deployment Protection for production.** On 2026-08-09, Vercel Authentication (SSO) was disabled project-wide (`update_project_deployment_protection`, `ssoProtection.enabled: false`) so a preview deployment could be reached without a Vercel team login. That call has no "production only" scope — the API's `deploymentType` enum is `all` / `preview` / `prod_deployment_urls_and_all_previews`, none of which protect production while leaving previews open. As a result **`caseirinhas-engine.vercel.app` (production) is currently reachable with no Vercel-level auth**, on top of whatever the app's own `requireStaff()`/RLS layer already enforces. Password Protection (a shared password, no Vercel account needed) would solve this properly but requires the team's paid "Advanced Deployment Protection" tier, which isn't enabled. Until this is revisited: either upgrade the Vercel plan and turn on Password Protection scoped to `preview`, or accept `all` (blocks preview access again) as an interim fix.
 
 ## Test coverage
 
