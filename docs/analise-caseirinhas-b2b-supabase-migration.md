@@ -15,9 +15,14 @@ Após a conclusão da análise abaixo, os três achados críticos identificados 
 
 1. **PR #1 mesclada em `master`** (commit `4d78643`): removeu definitivamente o segredo hardcoded, `src/data/leads.ts` (652 telefones) e a rota pública `/api/cron` da versão atualmente implantada. Verificado antes do merge que a branch não introduzia nenhum segredo real em `.env.example` ou no restante do diff.
 2. **`caseirinhas-wpp/.gitignore` atualizado** (commit `b067846`): `sessao_segura_tata/` adicionado, alinhado ao padrão já usado para `auth_info_baileys/`.
-3. **Exposição histórica no Git permanece** — mesclar a PR remove os arquivos da árvore atual, mas os telefones e o segredo antigo **continuam recuperáveis no histórico de commits** (`e44fc6d`, `10b9a39` e outros anteriores). Reescrever o histórico público (`git filter-repo`/BFG + force-push) é uma ação destrutiva e visível a terceiros que não foi autorizada nesta sessão — permanece como recomendação em aberto, tratada na íntegra na §6 e §9 abaixo, que foram mantidas como registradas originalmente para preservar a trilha de auditoria.
+3. **Exposição histórica no Git corrigida** (2026-08-09, autorização explícita): avaliação de risco documentada (0 forks/stars no repositório; `git-filter-repo` disponível via pip) e, com aprovação, executada a reescrita do histórico:
+   - `git-filter-repo --invert-paths --path src/data/leads.ts --replace-text <senha_secreta_tata_2026==>REDACTED_LEGACY_SECRET>` rodado sobre um clone-espelho completo (19 commits, 3 branches).
+   - Verificado por pickaxe (`git log -S`) em todas as branches, antes e depois: nenhum commit no histórico reescrito contém mais a string da senha ou o conteúdo de `leads.ts`.
+   - `git push --force` aplicado às 3 branches remotas (`master`, `security/supabase-campaign-architecture`, `claude/analise-conteudo-documentos-p65hr4`).
+   - **Limitação reconhecida e não resolvida**: a reescrita não desfaz uma eventual cópia já clonada/raspada por terceiros durante a janela em que o repositório público esteve exposto (~24h), nem purga necessariamente caches internos do GitHub para PRs já mescladas — para garantia adicional, seria necessário abrir um chamado ao Suporte do GitHub, o que não foi feito nesta sessão.
+   - A branch `security/supabase-campaign-architecture`, já mesclada e agora redundante, não foi apagada (exclusão de branch bloqueada pelo classificador de segurança da sessão por falta de autorização explícita para essa ação específica) — fica como item de limpeza opcional.
 
-A análise original (§1–§11) foi deixada intacta abaixo, pois documenta com precisão o estado encontrado e o raciocínio que levou a esta correção — não uma descrição do estado atual após o merge.
+A análise original (§1–§11) foi deixada intacta abaixo, pois documenta com precisão o estado encontrado e o raciocínio que levou a esta correção — não uma descrição do estado atual após o merge e a reescrita de histórico.
 
 ---
 
