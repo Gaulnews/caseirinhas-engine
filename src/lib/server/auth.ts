@@ -34,6 +34,13 @@ function hasLegacyAdminToken(request: Request): boolean {
  * Session auth is checked first and always wins when present. Route handlers that mutate rows
  * with a NOT NULL `auth.users` foreign key (e.g. `campaigns.created_by`) MUST pass
  * `allowAdminToken: false`, since the admin-token path has no real user id to attribute the write to.
+ *
+ * The session check is wrapped in try/catch on purpose: if Supabase env vars are missing or the
+ * Auth service is unreachable, `createSupabaseServerClient()`/`getUser()` throw. Without the
+ * try/catch that exception would propagate out of every route as an unhandled 500 — including
+ * for callers using the admin-token bridge, which doesn't depend on Supabase being reachable at
+ * all. A broken/misconfigured Supabase connection should degrade to "no session found", not take
+ * down every API route.
  */
 export async function requireStaff(
   request: Request,
@@ -42,30 +49,44 @@ export async function requireStaff(
 ): Promise<StaffResult> {
   const allowAdminToken = options.allowAdminToken ?? true;
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (error || !profile || !isStaffRole(profile.role)) {
-      return { ok: false, response: forbidden('No staff profile found for this account') };
-    }
-    if (!roleMeetsMinimum(profile.role, minimum)) {
-      return { ok: false, response: forbidden(`Requires ${minimum} role or higher`) };
-    }
-    return { ok: true, staff: { actorId: user.id, role: profile.role, via: 'session' } };
-  }
+  const session = await checkSession(minimum);
+  if (session) return session;
 
   if (allowAdminToken && hasLegacyAdminToken(request)) {
     return { ok: true, staff: { actorId: null, role: 'owner', via: 'admin_token' } };
   }
 
   return { ok: false, response: unauthorized() };
+}
+
+async function checkSession(minimum: StaffRole): Promise<StaffResult | null> {
+  let user: { id: string } | null = null;
+  let profileRole: string | null = null;
+  let profileError = false;
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user: sessionUser },
+    } = await supabase.auth.getUser();
+    user = sessionUser;
+
+    if (user) {
+      const { data: profile, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+      profileError = Boolean(error);
+      profileRole = profile?.role ?? null;
+    }
+  } catch {
+    // Supabase unreachable or misconfigured (missing env, network error, etc.) — treat as no session.
+    return null;
+  }
+
+  if (!user) return null;
+  if (profileError || !profileRole || !isStaffRole(profileRole)) {
+    return { ok: false, response: forbidden('No staff profile found for this account') };
+  }
+  if (!roleMeetsMinimum(profileRole, minimum)) {
+    return { ok: false, response: forbidden(`Requires ${minimum} role or higher`) };
+  }
+  return { ok: true, staff: { actorId: user.id, role: profileRole, via: 'session' } };
 }
