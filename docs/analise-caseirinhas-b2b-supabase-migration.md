@@ -9,6 +9,18 @@
 
 ---
 
+## Atualização pós-análise (2026-08-09, mesma sessão)
+
+Após a conclusão da análise abaixo, os três achados críticos identificados na §6 foram corrigidos, com autorização explícita do responsável pelo projeto:
+
+1. **PR #1 mesclada em `master`** (commit `4d78643`): removeu definitivamente o segredo hardcoded, `src/data/leads.ts` (652 telefones) e a rota pública `/api/cron` da versão atualmente implantada. Verificado antes do merge que a branch não introduzia nenhum segredo real em `.env.example` ou no restante do diff.
+2. **`caseirinhas-wpp/.gitignore` atualizado** (commit `b067846`): `sessao_segura_tata/` adicionado, alinhado ao padrão já usado para `auth_info_baileys/`.
+3. **Exposição histórica no Git permanece** — mesclar a PR remove os arquivos da árvore atual, mas os telefones e o segredo antigo **continuam recuperáveis no histórico de commits** (`e44fc6d`, `10b9a39` e outros anteriores). Reescrever o histórico público (`git filter-repo`/BFG + force-push) é uma ação destrutiva e visível a terceiros que não foi autorizada nesta sessão — permanece como recomendação em aberto, tratada na íntegra na §6 e §9 abaixo, que foram mantidas como registradas originalmente para preservar a trilha de auditoria.
+
+A análise original (§1–§11) foi deixada intacta abaixo, pois documenta com precisão o estado encontrado e o raciocínio que levou a esta correção — não uma descrição do estado atual após o merge.
+
+---
+
 ## Abstract
 
 Este relatório documenta a extração integral, em duas passadas, do conteúdo de uma sessão de trabalho longa (22 blocos de interação, ~2.840 linhas) na qual um assistente de IA conduziu — do zero até a execução real em produção — a construção de um sistema de prospecção B2B via WhatsApp para a "Caseirinhas da Tatá": importação de 652 leads do Google Places, criação de um painel de disparo, um diagnóstico crítico de segurança/LGPD/arquitetura, e a execução de uma migração de contenção (branch `security/supabase-campaign-architecture`, PR #1 draft no repositório `caseirinhas-engine`). A análise não se limitou ao texto: cada afirmação de execução foi cruzada com o estado real dos três repositórios GitHub e do clone local. O resultado confirma que a maior parte das ações relatadas de fato ocorreu, mas identifica **três achados críticos ainda ativos em produção** (segredo hardcoded exposto no cliente, 652 telefones pessoais versionados publicamente, e a branch de correção nunca mesclada em `master`), além de lacunas de conformidade LGPD e uma etapa de blindagem do `.gitignore` no `caseirinhas-wpp` que nunca foi aplicada. O documento serve como base de conhecimento para ações futuras.
