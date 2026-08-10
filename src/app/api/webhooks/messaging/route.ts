@@ -41,6 +41,14 @@ export async function POST(request: NextRequest) {
 
   let optOutTriggered = false;
   if (isNewMessage) {
+    // Record every inbound message against the lead, not just opt-out keywords — this is the
+    // signal that reopens the 24h customer-service messaging window.
+    await supabaseRest(`leads?phone_e164=eq.${encodeURIComponent(phoneE164)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ last_inbound_at: receivedAt }),
+    });
+
     const keyword = detectOptOutKeyword(messageText);
     if (keyword) {
       const result = await applyOptOut(phoneE164, `keyword:${keyword}`, 'inbound_webhook');

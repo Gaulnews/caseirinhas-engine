@@ -19,6 +19,8 @@
 ### Lead approval workflow
 
 - `PATCH /api/leads/:id` (and the panel's "Aprovar/Rejeitar" buttons) move a lead between `pending_review → eligible/invalid`, enforced by an explicit transition table — a lead can never jump straight from `pending_review` to `contacted`.
+- **Consent/eligibility audit trail** (`20260810031000_lead_consent_and_eligibility_audit.sql`): approving a lead to `eligible` now requires a `consentProofReference` (a pointer to the evidence the reviewer relied on — an opt-in form submission id, an order id, a storage reference to a screenshot, etc.) and always records `eligibility_reviewed_by`/`eligibility_reviewed_at` from a real signed-in session. Both the API route and the panel's Server Action reject the transition with no reference, and the API route no longer accepts the `ADMIN_API_TOKEN` bridge at all (it never should have — see the original scope note above; the code just hadn't enforced it). A raw scraped/imported list (e.g. Google Places) has no such evidence and therefore cannot legitimately reach `eligible` through this gate.
+- The messaging webhook (`POST /api/webhooks/messaging`) now also stamps `leads.last_inbound_at` on every inbound message, independent of opt-out detection — this is the signal that reopens the 24h customer-service messaging window, kept for future free-form-reply support even though the current provider only ever sends pre-approved templates.
 
 ### Campaigns + persistent queue
 
@@ -54,7 +56,7 @@ WHATSAPP_TEMPLATE_LANGUAGE=pt_BR
 
 ## What still requires a manual, real-infrastructure step (not doable from this session — no Supabase/Vercel access here)
 
-1. **Apply `20260809120000_staff_rbac_and_campaign_policies.sql`** to the actual `caseirinhas-engine-staging` project (only `20260808025100_...sql` has been confirmed applied so far, per the source analysis).
+1. **Apply `20260810031000_lead_consent_and_eligibility_audit.sql`** to the real project (`20260808025100_...sql` and `20260809120000_...sql` were confirmed applied via the Supabase MCP connection on 2026-08-09; this newest one was written while that connection was unavailable and still needs to be applied the same way).
 2. **Create the first real `owner` user** in Supabase Auth and set their `profiles.role = 'owner'` manually — until then, nobody can use the panel, and only the `ADMIN_API_TOKEN` bridge works for the routes that still accept it.
 3. **Set the new env vars** (`SUPABASE_ANON_KEY` and friends) in the Vercel project.
 4. **Configure a real scheduler** (e.g. a Vercel Cron Job) to call `POST /api/internal/queue/dispatch` on an interval, if/when real dispatch is wanted — nothing calls it automatically today.

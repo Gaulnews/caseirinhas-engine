@@ -83,8 +83,14 @@ export default async function PainelLeadsPage({ searchParams }: { searchParams: 
                 <td className="p-3">{STATUS_LABEL[lead.status] ?? lead.status}</td>
                 {canApprove && status === 'pending_review' && (
                   <td className="p-3">
-                    <div className="flex gap-2">
-                      <form action={setLeadStatusAction.bind(null, lead.id, 'eligible')}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <form action={setLeadStatusAction.bind(null, lead.id, 'eligible')} className="flex items-center gap-2">
+                        <input
+                          name="consentProofReference"
+                          required
+                          placeholder="Evidência de consentimento (obrigatório)"
+                          className="w-56 rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-600"
+                        />
                         <button type="submit" className="rounded bg-emerald-500/20 px-2 py-1 text-emerald-300 hover:bg-emerald-500/30">
                           Aprovar
                         </button>

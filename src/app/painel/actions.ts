@@ -22,7 +22,10 @@ const LEAD_TRANSITIONS: Record<string, string[]> = {
   blocked: ['pending_review'],
 };
 
-export async function setLeadStatusAction(leadId: string, nextStatus: string) {
+export async function setLeadStatusAction(leadId: string, nextStatus: string, formData: FormData) {
+  // Approving a lead requires a real signed-in session (requirePageStaff always resolves a real
+  // actor from getPageStaffSession — there is no admin-token bridge on this Server Action path),
+  // so eligibility_reviewed_by is never null for an eligible lead.
   const session = await requirePageStaff('operator');
 
   const currentResponse = await supabaseRest(`leads?select=status&id=eq.${leadId}`);
@@ -32,10 +35,22 @@ export async function setLeadStatusAction(leadId: string, nextStatus: string) {
     throw new Error(`invalid transition from ${currentStatus} to ${nextStatus}`);
   }
 
+  const consentProofReference = String(formData.get('consentProofReference') ?? '').trim();
+  if (nextStatus === 'eligible' && !consentProofReference) {
+    throw new Error('consentProofReference is required to approve a lead as eligible');
+  }
+
+  const updatePayload: Record<string, unknown> = { status: nextStatus };
+  if (nextStatus === 'eligible') {
+    updatePayload.consent_proof_reference = consentProofReference;
+    updatePayload.eligibility_reviewed_by = session.actorId;
+    updatePayload.eligibility_reviewed_at = new Date().toISOString();
+  }
+
   await supabaseRest(`leads?id=eq.${leadId}`, {
     method: 'PATCH',
     headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({ status: nextStatus }),
+    body: JSON.stringify(updatePayload),
   });
   await logAudit({ actorId: session.actorId, action: 'lead_status_change', entityType: 'lead', entityId: leadId, metadata: { from: currentStatus, to: nextStatus, via: 'panel' } });
   revalidatePath('/painel');
