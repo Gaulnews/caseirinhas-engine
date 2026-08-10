@@ -1,22 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminApiToken, supabaseRest } from '../../../lib/server/supabase-rest';
+import { requireStaff } from '../../../lib/server/auth';
+import { applyOptOut } from '../../../lib/server/opt-out';
+import { logAudit } from '../../../lib/server/audit';
 
 export const dynamic = 'force-dynamic';
-const e164 = /^\+[1-9]\d{7,14}$/;
 
 export async function POST(request: NextRequest) {
-  if (!requireAdminApiToken(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const staff = await requireStaff(request, 'operator');
+  if (!staff.ok) return staff.response;
 
   const body = await request.json().catch(() => null);
   const phone = typeof body?.phoneE164 === 'string' ? body.phoneE164.trim() : '';
   const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 500) : null;
-  if (!e164.test(phone)) return NextResponse.json({ error: 'phoneE164 must be E.164' }, { status: 400 });
 
-  const optOut = await supabaseRest('opt_outs?on_conflict=phone_e164', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([{ phone_e164: phone, channel: 'whatsapp', reason, source: 'admin_api' }]) });
-  if (!optOut.ok) return NextResponse.json({ error: 'Unable to register opt-out' }, { status: 502 });
+  const result = await applyOptOut(phone, reason, 'admin_api');
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.error.includes('E.164') ? 400 : 502 });
 
-  const updateLead = await supabaseRest(`leads?phone_e164=eq.${encodeURIComponent(phone)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'opted_out', opted_out_at: new Date().toISOString() }) });
-  if (!updateLead.ok) return NextResponse.json({ error: 'Opt-out stored; lead status update failed' }, { status: 502 });
+  await logAudit({ actorId: staff.staff.actorId, action: 'opt_out_registered', entityType: 'opt_out', entityId: phone, metadata: { reason, source: 'admin_api', via: staff.staff.via } });
 
   return NextResponse.json({ success: true, phoneE164: phone });
 }
