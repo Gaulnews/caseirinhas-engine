@@ -7,6 +7,7 @@ import { supabaseRest } from '../../lib/server/supabase-rest';
 import { logAudit } from '../../lib/server/audit';
 import { enqueueCampaign, cancelPendingJobsForCampaign } from '../../lib/server/queue';
 import { parseTemplateParameters } from '../../lib/server/campaign-template';
+import { LEAD_STATUS_TRANSITIONS } from '../../lib/server/lead-transitions';
 
 const TEMPLATE_CATEGORIES = ['MARKETING', 'UTILITY', 'AUTHENTICATION'];
 
@@ -18,13 +19,6 @@ async function requirePageStaff(minimum: StaffRole) {
   return session;
 }
 
-const LEAD_TRANSITIONS: Record<string, string[]> = {
-  pending_review: ['eligible', 'invalid'],
-  eligible: ['blocked', 'pending_review'],
-  invalid: ['pending_review'],
-  blocked: ['pending_review'],
-};
-
 export async function setLeadStatusAction(leadId: string, nextStatus: string, formData: FormData) {
   // Approving a lead requires a real signed-in session (requirePageStaff always resolves a real
   // actor from getPageStaffSession — there is no admin-token bridge on this Server Action path),
@@ -34,7 +28,7 @@ export async function setLeadStatusAction(leadId: string, nextStatus: string, fo
   const currentResponse = await supabaseRest(`leads?select=status&id=eq.${leadId}`);
   const rows = await currentResponse.json().catch(() => null);
   const currentStatus = rows?.[0]?.status as string | undefined;
-  if (!currentStatus || !(LEAD_TRANSITIONS[currentStatus] ?? []).includes(nextStatus)) {
+  if (!currentStatus || !(LEAD_STATUS_TRANSITIONS[currentStatus] ?? []).includes(nextStatus)) {
     throw new Error(`invalid transition from ${currentStatus} to ${nextStatus}`);
   }
 

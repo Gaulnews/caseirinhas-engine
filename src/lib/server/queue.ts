@@ -139,8 +139,10 @@ export type DispatchSummary = { attempted: number; sent: number; skipped: number
 /**
  * Picks up due, queued jobs and processes them one at a time. Every job is locked with a
  * conditional PATCH (`status=eq.queued&locked_at=is.null`) before processing, so two concurrent
- * dispatcher invocations can never double-send the same job. No real message is ever sent today
- * (see `messaging/provider.ts`) — every job resolves to `skipped` until a provider is wired up.
+ * dispatcher invocations can never double-send the same job. Whether a send is real or a no-op
+ * depends entirely on which `MessagingProvider` `getMessagingProvider()` returns (see
+ * `messaging/provider.ts`) — with `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`/
+ * `WHATSAPP_TEMPLATE_NAME` all set, this dispatches real WhatsApp messages.
  */
 export async function dispatchDueJobs(limit = 20, workerId = 'internal-dispatcher'): Promise<DispatchSummary> {
   const provider = getMessagingProvider();
@@ -192,37 +194,50 @@ export async function dispatchDueJobs(limit = 20, workerId = 'internal-dispatche
 
     summary.attempted += 1;
 
-    const phone = await leadPhone(job.campaign_recipients.lead_id);
-    const [optedOut, leadRows] = await Promise.all([hasOptOut(phone), leadStatus(job.campaign_recipients.lead_id)]);
-    const stillEligible = leadRows === 'eligible' && !optedOut && phone.length > 0;
+    // Everything from here on touches the network (Supabase REST, the messaging provider) after
+    // the job is already locked (status='processing'). Without this try/catch, an unhandled
+    // rejection here (a transient fetch failure, etc.) would propagate out of dispatchDueJobs
+    // entirely, abandoning the rest of the batch and leaving this job stuck at status='processing'
+    // forever — the due-jobs query above requires locked_at IS NULL, so a stuck row becomes
+    // permanently invisible to every future dispatch run instead of being retried.
+    try {
+      const phone = await leadPhone(job.campaign_recipients.lead_id);
+      const [optedOut, leadRows] = await Promise.all([hasOptOut(phone), leadStatus(job.campaign_recipients.lead_id)]);
+      const stillEligible = leadRows === 'eligible' && !optedOut && phone.length > 0;
 
-    if (!stillEligible) {
-      await finishJob(job.id, 'cancelled', 'cancelled', 'lead_no_longer_eligible');
-      summary.skipped += 1;
-      continue;
-    }
+      if (!stillEligible) {
+        await finishJob(job.id, 'cancelled', 'cancelled', 'lead_no_longer_eligible');
+        summary.skipped += 1;
+        continue;
+      }
 
-    const templateParameters = validateTemplateParameters(campaign.template_parameters as TemplateParameters);
-    if (!templateParameters) {
-      await finishJob(job.id, 'skipped', 'skipped', 'campaign_missing_template_parameters');
-      summary.skipped += 1;
-      continue;
-    }
+      const templateParameters = validateTemplateParameters(campaign.template_parameters as TemplateParameters);
+      if (!templateParameters) {
+        await finishJob(job.id, 'skipped', 'skipped', 'campaign_missing_template_parameters');
+        summary.skipped += 1;
+        continue;
+      }
 
-    const result = await provider.send(phone, orderedTemplateParameters(templateParameters));
+      const result = await provider.send(phone, orderedTemplateParameters(templateParameters));
 
-    if (result.ok) {
-      await finishJob(job.id, 'sent', 'sent', null, result.providerMessageId);
-      await supabaseRest(`leads?id=eq.${job.campaign_recipients.lead_id}`, {
-        method: 'PATCH',
-        headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify({ status: 'contacted', last_contacted_at: new Date().toISOString() }),
-      });
-      budget.sentToday += 1;
-      summary.sent += 1;
-    } else {
-      await finishJob(job.id, 'skipped', 'skipped', result.errorMessage);
-      summary.skipped += 1;
+      if (result.ok) {
+        await finishJob(job.id, 'sent', 'sent', null, result.providerMessageId);
+        await supabaseRest(`leads?id=eq.${job.campaign_recipients.lead_id}`, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify({ status: 'contacted', last_contacted_at: new Date().toISOString() }),
+        });
+        budget.sentToday += 1;
+        summary.sent += 1;
+      } else {
+        await finishJob(job.id, 'skipped', 'skipped', result.errorMessage);
+        summary.skipped += 1;
+      }
+    } catch (error) {
+      // Release the lock so the job goes back into the due-jobs pool for the next dispatch run,
+      // instead of rotting invisibly. `attempts` was already incremented at lock time above.
+      await releaseJobLock(job.id, error instanceof Error ? error.message : 'dispatch_error');
+      summary.failed += 1;
     }
   }
 
@@ -246,6 +261,16 @@ async function hasOptOut(phoneE164: string): Promise<boolean> {
   const response = await supabaseRest(`opt_outs?select=id&phone_e164=eq.${encodeURIComponent(phoneE164)}`);
   const rows = (await json<Array<{ id: string }>>(response)) ?? [];
   return rows.length > 0;
+}
+
+/** Best-effort unlock after a mid-processing exception; if this PATCH itself fails, the job stays
+ *  locked until manually investigated — that is a rarer failure than the one this guards against. */
+async function releaseJobLock(jobId: string, errorMessage: string): Promise<void> {
+  await supabaseRest(`message_jobs?id=eq.${jobId}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ status: 'queued', locked_at: null, locked_by: null, last_error: errorMessage }),
+  }).catch(() => undefined);
 }
 
 async function finishJob(

@@ -28,11 +28,22 @@ export function validateTemplateParameters(value: unknown): TemplateParameters |
   if (entries.length === 0 || entries.length > MAX_PARAMETERS) return null;
 
   const result: TemplateParameters = {};
+  const positions = new Set<number>();
   for (const [key, val] of entries) {
     if (!/^[1-9][0-9]*$/.test(key)) return null; // only positional keys "1", "2", ... — no arbitrary field names
     if (typeof val !== 'string' || val.length === 0 || val.length > MAX_VALUE_LENGTH) return null;
+    positions.add(Number(key));
     result[key] = val;
   }
+
+  // Positions must be contiguous starting at 1 ({"2": "x"} or {"1": "a", "3": "c"} are both
+  // rejected). orderedTemplateParameters() below compacts whatever keys are present into a
+  // 0-indexed array for WhatsApp's positional {{1}}, {{2}}, ... slots — a gap would silently
+  // shift every parameter after it into the wrong slot instead of failing loudly.
+  for (let position = 1; position <= entries.length; position += 1) {
+    if (!positions.has(position)) return null;
+  }
+
   return result;
 }
 

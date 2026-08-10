@@ -42,6 +42,16 @@ describe('validateTemplateParameters', () => {
     expect(validateTemplateParameters({ '1': 'a'.repeat(500) })).not.toBeNull();
   });
 
+  it('rejects non-contiguous positions — a gap would silently shift every later parameter into the wrong {{n}} slot', () => {
+    expect(validateTemplateParameters({ '2': 'segunda-feira' })).toBeNull(); // missing "1"
+    expect(validateTemplateParameters({ '1': 'a', '3': 'c' })).toBeNull(); // missing "2"
+    expect(validateTemplateParameters({ '1': 'a', '2': 'b', '4': 'd' })).toBeNull(); // missing "3"
+  });
+
+  it('accepts contiguous positions regardless of insertion order', () => {
+    expect(validateTemplateParameters({ '3': 'c', '1': 'a', '2': 'b' })).toEqual({ '1': 'a', '2': 'b', '3': 'c' });
+  });
+
   it('rejects more than 10 parameters', () => {
     const tooMany = Object.fromEntries(Array.from({ length: 11 }, (_, i) => [String(i + 1), `value${i}`]));
     expect(validateTemplateParameters(tooMany)).toBeNull();
