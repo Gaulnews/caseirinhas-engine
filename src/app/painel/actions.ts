@@ -6,6 +6,9 @@ import { roleMeetsMinimum, type StaffRole } from '../../lib/server/roles';
 import { supabaseRest } from '../../lib/server/supabase-rest';
 import { logAudit } from '../../lib/server/audit';
 import { enqueueCampaign, cancelPendingJobsForCampaign } from '../../lib/server/queue';
+import { parseTemplateParameters } from '../../lib/server/campaign-template';
+
+const TEMPLATE_CATEGORIES = ['MARKETING', 'UTILITY', 'AUTHENTICATION'];
 
 async function requirePageStaff(minimum: StaffRole) {
   const session = await getPageStaffSession();
@@ -63,14 +66,29 @@ export async function createCampaignAction(formData: FormData) {
   const messageTemplate = String(formData.get('messageTemplate') ?? '').trim();
   const dailyLimit = Math.min(Math.max(Number(formData.get('dailyLimit') ?? 20), 0), 100);
   const minIntervalSeconds = Math.max(Number(formData.get('minIntervalSeconds') ?? 90), 60);
+  const templateCategory = String(formData.get('templateCategory') ?? 'MARKETING');
+  const templateParameters = parseTemplateParameters(formData.get('templateParameters'));
 
   if (name.length < 2 || messageTemplate.length < 1) throw new Error('invalid campaign fields');
+  if (!TEMPLATE_CATEGORIES.includes(templateCategory)) throw new Error('invalid templateCategory');
+  // Required for the same reason as the API route (src/app/api/campaigns/route.ts): the provider
+  // only ever sends these positional values, never messageTemplate's free text.
+  if (!templateParameters) throw new Error('templateParameters must be valid JSON: positional keys ("1","2",...) to non-empty strings, max 10');
 
   const insert = await supabaseRest('campaigns', {
     method: 'POST',
     headers: { Prefer: 'return=representation' },
     body: JSON.stringify([
-      { name, message_template: messageTemplate, daily_limit: dailyLimit, min_interval_seconds: minIntervalSeconds, created_by: session.actorId, status: 'draft' },
+      {
+        name,
+        message_template: messageTemplate,
+        daily_limit: dailyLimit,
+        min_interval_seconds: minIntervalSeconds,
+        template_category: templateCategory,
+        template_parameters: templateParameters,
+        created_by: session.actorId,
+        status: 'draft',
+      },
     ]),
   });
   const created = await insert.json().catch(() => null);

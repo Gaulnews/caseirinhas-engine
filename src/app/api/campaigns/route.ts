@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireStaff } from '../../../lib/server/auth';
 import { supabaseRest } from '../../../lib/server/supabase-rest';
 import { logAudit } from '../../../lib/server/audit';
+import { validateTemplateParameters } from '../../../lib/server/campaign-template';
+
+const TEMPLATE_CATEGORIES = ['MARKETING', 'UTILITY', 'AUTHENTICATION'];
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +34,22 @@ export async function POST(request: NextRequest) {
   const messageTemplate = typeof body?.messageTemplate === 'string' ? body.messageTemplate.trim() : '';
   const dailyLimit = Number.isInteger(body?.dailyLimit) ? Math.min(Math.max(body.dailyLimit, 0), 100) : 20;
   const minIntervalSeconds = Number.isInteger(body?.minIntervalSeconds) ? Math.max(body.minIntervalSeconds, 60) : 90;
+  const templateCategory = typeof body?.templateCategory === 'string' ? body.templateCategory : 'MARKETING';
+  const templateParameters = validateTemplateParameters(body?.templateParameters);
 
   if (name.length < 2 || name.length > 140) return NextResponse.json({ error: 'name must be 2-140 characters' }, { status: 400 });
   if (messageTemplate.length < 1 || messageTemplate.length > 4096) return NextResponse.json({ error: 'messageTemplate must be 1-4096 characters' }, { status: 400 });
+  if (!TEMPLATE_CATEGORIES.includes(templateCategory)) {
+    return NextResponse.json({ error: `templateCategory must be one of ${TEMPLATE_CATEGORIES.join(', ')}` }, { status: 400 });
+  }
+  // Required: an approved WhatsApp template only ever receives these positional values (see
+  // campaign-template.ts) -- there is no code path where messageTemplate reaches WhatsApp directly.
+  if (!templateParameters) {
+    return NextResponse.json(
+      { error: 'templateParameters must be a JSON object of positional keys ("1","2",...) to non-empty string values, max 10 entries' },
+      { status: 400 },
+    );
+  }
 
   const insert = await supabaseRest('campaigns', {
     method: 'POST',
@@ -44,6 +60,8 @@ export async function POST(request: NextRequest) {
         message_template: messageTemplate,
         daily_limit: dailyLimit,
         min_interval_seconds: minIntervalSeconds,
+        template_category: templateCategory,
+        template_parameters: templateParameters,
         created_by: staff.staff.actorId,
         status: 'draft',
       },

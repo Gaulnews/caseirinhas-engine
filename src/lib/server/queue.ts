@@ -1,5 +1,6 @@
 import { supabaseRest } from './supabase-rest';
 import { getMessagingProvider } from './messaging/provider';
+import { orderedTemplateParameters, validateTemplateParameters, type TemplateParameters } from './campaign-template';
 
 const RECONTACT_COOLDOWN_DAYS = 30;
 const MAX_RECIPIENTS_PER_START = 500;
@@ -99,7 +100,13 @@ type DueJob = {
   attempts: number;
   campaign_recipients: {
     lead_id: string;
-    campaigns: { id: string; status: string; daily_limit: number; min_interval_seconds: number; message_template: string };
+    campaigns: {
+      id: string;
+      status: string;
+      daily_limit: number;
+      min_interval_seconds: number;
+      template_parameters: unknown;
+    };
   };
 };
 
@@ -142,7 +149,7 @@ export async function dispatchDueJobs(limit = 20, workerId = 'internal-dispatche
 
   const query = new URLSearchParams({
     select:
-      'id,campaign_recipient_id,attempts,campaign_recipients(lead_id,campaigns(id,status,daily_limit,min_interval_seconds,message_template))',
+      'id,campaign_recipient_id,attempts,campaign_recipients(lead_id,campaigns(id,status,daily_limit,min_interval_seconds,template_parameters))',
     status: 'eq.queued',
     locked_at: 'is.null',
     run_after: `lte.${new Date().toISOString()}`,
@@ -195,7 +202,14 @@ export async function dispatchDueJobs(limit = 20, workerId = 'internal-dispatche
       continue;
     }
 
-    const result = await provider.send(phone, campaign.message_template);
+    const templateParameters = validateTemplateParameters(campaign.template_parameters as TemplateParameters);
+    if (!templateParameters) {
+      await finishJob(job.id, 'skipped', 'skipped', 'campaign_missing_template_parameters');
+      summary.skipped += 1;
+      continue;
+    }
+
+    const result = await provider.send(phone, orderedTemplateParameters(templateParameters));
 
     if (result.ok) {
       await finishJob(job.id, 'sent', 'sent', null, result.providerMessageId);

@@ -51,12 +51,31 @@ export default async function CampanhasPage() {
               <input name="dailyLimit" type="number" defaultValue={20} min={0} max={100} className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
             </label>
             <label className="space-y-1 text-sm text-zinc-400 sm:col-span-2">
-              Mensagem
-              <textarea name="messageTemplate" required rows={3} maxLength={4096} className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+              Descrição interna (não é enviada ao WhatsApp — só documenta o propósito da campanha)
+              <textarea name="messageTemplate" required rows={2} maxLength={4096} className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+            </label>
+            <label className="space-y-1 text-sm text-zinc-400">
+              Categoria do template aprovado
+              <select name="templateCategory" defaultValue="MARKETING" className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100">
+                <option value="MARKETING">MARKETING</option>
+                <option value="UTILITY">UTILITY</option>
+                <option value="AUTHENTICATION">AUTHENTICATION</option>
+              </select>
             </label>
             <label className="space-y-1 text-sm text-zinc-400">
               Intervalo mínimo entre envios (segundos)
               <input name="minIntervalSeconds" type="number" defaultValue={90} min={60} className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 text-zinc-100" />
+            </label>
+            <label className="space-y-1 text-sm text-zinc-400 sm:col-span-2">
+              Parâmetros do template (JSON) — só valores nas posições {'{{1}}, {{2}}, ...'} do template já
+              aprovado pela Meta ({`WHATSAPP_TEMPLATE_NAME`}). Nunca é texto livre.
+              <textarea
+                name="templateParameters"
+                required
+                rows={3}
+                placeholder='{"1": "segunda-feira", "2": "Bife à parmegiana com arroz e feijão", "3": "R$ 22,00"}'
+                className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-2 font-mono text-xs text-zinc-100"
+              />
             </label>
           </div>
           <button type="submit" className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-zinc-950">

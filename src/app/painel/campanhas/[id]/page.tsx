@@ -10,6 +10,8 @@ type CampaignDetail = {
   id: string;
   name: string;
   message_template: string;
+  template_category: string;
+  template_parameters: Record<string, string>;
   status: string;
   daily_limit: number;
   min_interval_seconds: number;
@@ -19,7 +21,7 @@ type CampaignDetail = {
 
 async function loadCampaign(id: string) {
   const response = await supabaseRest(
-    `campaigns?id=eq.${id}&select=id,name,message_template,status,daily_limit,min_interval_seconds,started_at,completed_at`,
+    `campaigns?id=eq.${id}&select=id,name,message_template,template_category,template_parameters,status,daily_limit,min_interval_seconds,started_at,completed_at`,
   );
   const rows = await response.json().catch(() => null);
   return (rows?.[0] as CampaignDetail | undefined) ?? null;
@@ -56,8 +58,23 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-        <h2 className="mb-2 text-sm font-bold text-zinc-400">Mensagem</h2>
+        <h2 className="mb-2 text-sm font-bold text-zinc-400">Descrição interna</h2>
         <p className="whitespace-pre-wrap text-sm">{campaign.message_template}</p>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+        <h2 className="mb-2 text-sm font-bold text-zinc-400">
+          Template WhatsApp enviado ({campaign.template_category})
+        </h2>
+        <div className="flex flex-wrap gap-2 text-sm">
+          {Object.entries(campaign.template_parameters ?? {})
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([key, value]) => (
+              <span key={key} className="rounded-full border border-zinc-800 px-3 py-1 font-mono text-xs">
+                {`{{${key}}}`} = {value}
+              </span>
+            ))}
+        </div>
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">

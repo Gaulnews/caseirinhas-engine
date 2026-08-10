@@ -3,7 +3,9 @@ export type SendResult =
   | { ok: false; errorCode: string; errorMessage: string };
 
 export interface MessagingProvider {
-  send(phoneE164: string, text: string): Promise<SendResult>;
+  /** `parameters` are ordered positional values for the approved template's {{1}}, {{2}}, ... body
+   *  variables (see campaign-template.ts) — never free text. */
+  send(phoneE164: string, parameters: string[]): Promise<SendResult>;
 }
 
 /**
@@ -15,7 +17,7 @@ export interface MessagingProvider {
  */
 export class NullMessagingProvider implements MessagingProvider {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature fixed by the MessagingProvider interface
-  async send(_phoneE164: string, _text: string): Promise<SendResult> {
+  async send(_phoneE164: string, _parameters: string[]): Promise<SendResult> {
     return {
       ok: false,
       errorCode: 'messaging_provider_not_configured',
@@ -29,10 +31,10 @@ export class NullMessagingProvider implements MessagingProvider {
  * re-verified as `eligible` and opt-out-free immediately beforehand (see queue.ts) — this class
  * has no opinion on consent, it just sends what it's told to send.
  *
- * Sends an approved marketing template with the campaign's message as the template's single body
- * variable. WhatsApp requires an approved template for any business-initiated message outside the
- * 24h customer-service window — free text typed into the campaign form is never sent as raw text,
- * it can only ever be the {{1}} parameter of a template Meta has already reviewed and approved.
+ * Sends an approved template with the campaign's `template_parameters` as its ordered body
+ * variables. WhatsApp requires an approved template for any business-initiated message outside the
+ * 24h customer-service window — this provider has no code path that accepts free text at all, so a
+ * template can never be turned into an arbitrary marketing message (see campaign-template.ts).
  */
 export class WhatsAppCloudApiProvider implements MessagingProvider {
   constructor(
@@ -42,7 +44,7 @@ export class WhatsAppCloudApiProvider implements MessagingProvider {
     private readonly templateLanguage: string,
   ) {}
 
-  async send(phoneE164: string, text: string): Promise<SendResult> {
+  async send(phoneE164: string, parameters: string[]): Promise<SendResult> {
     let response: Response;
     try {
       response = await fetch(`https://graph.facebook.com/v21.0/${this.phoneNumberId}/messages`, {
@@ -55,7 +57,7 @@ export class WhatsAppCloudApiProvider implements MessagingProvider {
           template: {
             name: this.templateName,
             language: { code: this.templateLanguage },
-            components: [{ type: 'body', parameters: [{ type: 'text', text }] }],
+            components: [{ type: 'body', parameters: parameters.map((text) => ({ type: 'text', text })) }],
           },
         }),
       });
