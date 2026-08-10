@@ -99,7 +99,7 @@ type DueJob = {
   attempts: number;
   campaign_recipients: {
     lead_id: string;
-    campaigns: { id: string; status: string; daily_limit: number; min_interval_seconds: number };
+    campaigns: { id: string; status: string; daily_limit: number; min_interval_seconds: number; message_template: string };
   };
 };
 
@@ -142,7 +142,7 @@ export async function dispatchDueJobs(limit = 20, workerId = 'internal-dispatche
 
   const query = new URLSearchParams({
     select:
-      'id,campaign_recipient_id,attempts,campaign_recipients(lead_id,campaigns(id,status,daily_limit,min_interval_seconds))',
+      'id,campaign_recipient_id,attempts,campaign_recipients(lead_id,campaigns(id,status,daily_limit,min_interval_seconds,message_template))',
     status: 'eq.queued',
     locked_at: 'is.null',
     run_after: `lte.${new Date().toISOString()}`,
@@ -195,7 +195,7 @@ export async function dispatchDueJobs(limit = 20, workerId = 'internal-dispatche
       continue;
     }
 
-    const result = await provider.send(phone, '(provider not configured)');
+    const result = await provider.send(phone, campaign.message_template);
 
     if (result.ok) {
       await finishJob(job.id, 'sent', 'sent', null, result.providerMessageId);
