@@ -40,9 +40,30 @@ async function jsonOrNull<T>(res: Response): Promise<T | null> {
   return res.json().catch(() => null);
 }
 
+async function countTodaySent(campaignId: string, todayStartISO: string): Promise<number> {
+  const params = new URLSearchParams({
+    select: 'id,message_jobs!inner(campaign_recipients!inner(campaign_id))',
+    'message_jobs.campaign_recipients.campaign_id': `eq.${campaignId}`,
+    outcome: 'eq.accepted',
+    attempted_at: `gte.${todayStartISO}`,
+    limit: '0',
+  });
+  const res = await supabaseRest(`message_attempts?${params.toString()}`, {
+    headers: { Prefer: 'count=exact' },
+  });
+  // PostgREST returns Content-Range: 0-N/TOTAL or */TOTAL
+  const contentRange = res.headers.get('content-range') ?? '';
+  const match = contentRange.match(/\/(\d+)$/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
 export async function runDispatch(objective: number): Promise<DispatchSummary> {
   const summary: DispatchSummary = { objective, fetched: 0, sent: 0, failed: 0, skipped: 0 };
   const now = new Date().toISOString();
+
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayStartISO = todayStart.toISOString();
 
   const crFields = [
     'id',
@@ -72,6 +93,23 @@ export async function runDispatch(objective: number): Promise<DispatchSummary> {
   if (!Array.isArray(jobs) || jobs.length === 0) return summary;
   summary.fetched = jobs.length;
 
+  // Pre-fetch today's sent counts for all campaigns with a daily_limit > 0
+  const limitedCampaigns = new Map<string, number>(); // campaignId -> daily_limit
+  for (const job of jobs) {
+    const campaign = job.campaign_recipients?.campaigns;
+    if (campaign && campaign.daily_limit > 0 && !limitedCampaigns.has(campaign.id)) {
+      limitedCampaigns.set(campaign.id, campaign.daily_limit);
+    }
+  }
+
+  const dailySent = new Map<string, number>(); // campaignId -> sent today so far
+  await Promise.all(
+    Array.from(limitedCampaigns.keys()).map(async (campaignId) => {
+      const count = await countTodaySent(campaignId, todayStartISO);
+      dailySent.set(campaignId, count);
+    }),
+  );
+
   for (const job of jobs) {
     const cr = job.campaign_recipients;
     const campaign = cr?.campaigns;
@@ -80,6 +118,13 @@ export async function runDispatch(objective: number): Promise<DispatchSummary> {
     if (!cr || !campaign || !lead) { summary.skipped++; continue; }
     if (campaign.status !== 'running') { summary.skipped++; continue; }
     if (lead.status !== 'eligible') { summary.skipped++; continue; }
+
+    // Enforce daily_limit (0 = unlimited)
+    if (campaign.daily_limit > 0) {
+      const sentToday = dailySent.get(campaign.id) ?? 0;
+      if (sentToday >= campaign.daily_limit) { summary.skipped++; continue; }
+      dailySent.set(campaign.id, sentToday + 1);
+    }
 
     // Optimistic lock: only updates if the job is still queued and unlocked
     const lockRes = await supabaseRest(
