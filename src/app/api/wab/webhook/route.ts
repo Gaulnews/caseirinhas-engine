@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { handleMessage } from '../../../lib/server/bot/engine';
+import { handleMessage } from '../../../../lib/server/bot/engine';
 
 export const dynamic = 'force-dynamic';
 
